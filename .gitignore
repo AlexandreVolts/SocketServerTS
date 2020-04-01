@@ -1,0 +1,6 @@
+.vscode
+.idea
+build/
+node_modules/
+webapp/build/
+src/lib/index.ts
