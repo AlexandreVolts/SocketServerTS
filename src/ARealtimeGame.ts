@@ -7,11 +7,10 @@ export type ReceiveCallback<T extends IReceivedPacket, P extends APlayer> = ((da
 
 export abstract class ARealtimeGame<P extends APlayer>
 {
-	private static readonly ON_PLAYER_JOIN_EVENT_NAME = "join";
-	private static readonly ON_PLAYER_LEAVE_EVENT_NAME = "leave";
 	private readonly players = new Map<PlayerId, P>();
 	private readonly registeredEvents = new Map<SocketEvent, Function>();
 	private hasStarted:boolean = false;
+	private _hasEnded:boolean = false;
 	
 	constructor(private readonly ROOM_CAPACITY:number = 2)
 	{
@@ -35,16 +34,32 @@ export abstract class ARealtimeGame<P extends APlayer>
 		return (this.players.get(id));
 	}
 
-	protected readonly applyToAllPlayers = (callback:(player:P) => void) =>
+	/**
+	 * Run an iterator through all the players.
+	 * It is possible to access to the current player variable via the *callback* parameter.
+	 * You can also use a filter callback (optional) to apply the function to only some instances.
+	 *
+	 * @params callback:(player:<P extends APlayer>) => void = The callback to execute for every player.
+	 * @params (optional) filter:(player:<P extends APlayer) => boolean
+	 * @returns A number representing the number of instances that has been affected by your callback.
+	 */
+	protected readonly applyToAllPlayers = (callback:(player:P) => void, filter?:(player:P) => boolean):number =>
 	{
+		let output = 0;
+		
 		this.players.forEach((p:P) => {
-			callback(p);
+			if (!filter || filter(p)) {
+				callback(p);
+				output++;
+			}
 		});
+		return (output);
 	}
 
 	/**
 	 * This method will prepare a socket event to be registered.
 	 * Just before the game start, all the receive events will be automatically binded.
+	 * If you call this method after the game started, the event will instantly be binded.
 	 *
 	 * @params event:SocketEvent
 	 * @params callback:(p:<T extends IReceivedPacket>)
@@ -52,6 +67,19 @@ export abstract class ARealtimeGame<P extends APlayer>
 	protected readonly registerReceiveEvent = <T extends IReceivedPacket>(event:SocketEvent, callback:ReceiveCallback<T, P>) =>
 	{
 		this.registeredEvents.set(event, callback);
+		if (this.hasStarted) {
+			this.applyToAllPlayers((player:P) => {
+				player.on(event, (data:T) => {
+					callback(data, player);
+				});
+			});
+		}
+	}
+
+	protected readonly stop = () =>
+	{
+		this._hasEnded = true;
+		this.close();
 	}
 
 	/**
@@ -64,26 +92,26 @@ export abstract class ARealtimeGame<P extends APlayer>
 
 	/**
 	 * This method is automatically called when a player join the room.
-	 * If you don't override this method, by default, it will send a "join" event to all players in the room.
+	 * If you don't override this method, by default, it will send a "on_player_join" event to all players in the room.
 	 * But you can override this method to implement your own behavior.
 	 *
 	 * @params player:<P extends APlayer> = An object representing the player who joined the room.
 	 */
 	protected onPlayerJoin(player:P):void
 	{
-		this.broadcast(ARealtimeGame.ON_PLAYER_JOIN_EVENT_NAME, <ISendPacket>{id: player.ID});
+		player;
 	}
 
 	/**
 	 * This method is automatically called when a player leave the room.
-	 * If you don't override this method, by default, it will send a "leave" event to all players in the room.
+	 * If you don't override this method, by default, it will send a "on_player_leave" event to all players in the room.
 	 * But you can override this method to implement your own behavior.
 	 *
 	 * @params player:<P extends APlayer> = An object representing the player who joined the room.
 	 */
 	protected onPlayerLeave(player:P):void
 	{
-		this.broadcast(ARealtimeGame.ON_PLAYER_LEAVE_EVENT_NAME, <ISendPacket>{id: player.ID});
+		player;
 	}
 
 	/**
@@ -138,8 +166,13 @@ export abstract class ARealtimeGame<P extends APlayer>
 		return (true);
 	}
 
-	public readonly isFilled = ():boolean =>
+	get isFilled()
 	{
 		return (this.players.size == this.ROOM_CAPACITY);
+	}
+
+	get hadEnded()
+	{
+		return (this._hasEnded);
 	}
 };

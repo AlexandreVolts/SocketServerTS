@@ -1,5 +1,5 @@
 import socketio from "socket.io";
-import { ISocket, SocketId, SocketIp } from "./ISocket";
+import { ISocket, SocketId, SocketIp } from "./../socket/ISocket";
 import { IReceivedPacket, ISendPacket } from "./../Packet";
 import { SocketEvent } from "./../types/SocketEvent";
 
