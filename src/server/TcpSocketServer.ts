@@ -17,7 +17,7 @@ export class TcpSocketServer implements IServer
 		this.tcpServer.on("connection", (socket:net.Socket) => {
 			callback(new TcpSocket(socket));
 			socket.on("error", (err) => {
-				console.error(`An error occured on TCP socket server: ${err}`);
+				console.error(`An error occured on TCP socket server: ${err}.`);
 			});
 		});
 	}

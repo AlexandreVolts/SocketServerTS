@@ -1,20 +1,27 @@
 {
-  "name": "SocketServerTS",
-  "version": "1.0.0",
-  "description": "An encapsulation of socket.io & TCPSocket to simplify real-time cross-plateform app development.",
-  "repository": "https://github.com/AlexandreVolts/SocketServerTS.git",
-  "scripts": {
-    "deps:build": "yarn --cwd ../etwin-api-types run lib:build",
-    "lib:build": "tsc -p src/lib/tsconfig.json",
-    "lib:run": "yarn run lib:build && node ./build/lib/haxe/serializer.js"
-  },
+  "name": "etwin-socket-server",
+  "version": "1.2.1",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "author": "Alexandre Cochet",
-  "license": "GNU",
-  "dependencies": {
-    "socket.io": "^2.3.0"
+  "license": "MIT",
+  "private": false,
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/main/index.js"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
     "@types/node": "^13.9.8",
-    "@types/socket.io": "^2.1.4"
+    "@types/socket.io": "^2.1.4",
+    "@types/websocket": "^1.0.0",
+    "typescript": "^3.8.3"
+  },
+  "dependencies": {
+    "socket.io": "^2.3.0",
+    "websocket": "^1.0.31"
   }
 }

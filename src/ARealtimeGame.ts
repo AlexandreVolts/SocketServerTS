@@ -1,30 +1,31 @@
 import { APlayer } from "./APlayer";
 import { IReceivedPacket, ISendPacket } from "./Packet";
 import { PlayerId } from "./types/PlayerId";
-import { SocketEvent } from "./types/SocketEvent";
+import { PlayerList } from "./PlayerList";
+import { SocketEvent } from "./types/SocketTypes";
 
 export type ReceiveCallback<T extends IReceivedPacket, P extends APlayer> = ((data:T) => void) | ((data:T, sender:P) => void);
 
 export abstract class ARealtimeGame<P extends APlayer>
 {
+	private static currentId:number = 0;
 	private readonly players = new Map<PlayerId, P>();
-	private readonly registeredEvents = new Map<SocketEvent, Function>();
+	private readonly events = new Map<SocketEvent, ReceiveCallback<IReceivedPacket, P>>();
+	private readonly registeredEvents = new Map<SocketEvent, ReceiveCallback<IReceivedPacket, P>>();
 	private hasStarted:boolean = false;
 	private _hasEnded:boolean = false;
+	public readonly ID:number;
 	
-	constructor(private readonly ROOM_CAPACITY:number = 2)
+	constructor(private roomCapacity:number = 2)
 	{
-
+		this.ID = ARealtimeGame.currentId;
+		ARealtimeGame.currentId++;
 	}
 
 	private prerun():void
 	{
-		this.applyToAllPlayers((player:P) => {
-			this.registeredEvents.forEach((callback:Function, key:SocketEvent) => {
-				player.on(key, (data:IReceivedPacket) => {
-					callback(data, player);
-				});
-			});
+		this.registeredEvents.forEach((callback:ReceiveCallback<IReceivedPacket, P>, key:SocketEvent) => {
+			this.on(key, callback);
 		});
 		this.run();
 	}
@@ -35,25 +36,26 @@ export abstract class ARealtimeGame<P extends APlayer>
 	}
 
 	/**
-	 * Run an iterator through all the players.
-	 * It is possible to access to the current player variable via the *callback* parameter.
-	 * You can also use a filter callback (optional) to apply the function to only some instances.
+	 * Run an iterator through all the players ans execute a function on each of them.
+	 * It is possible to access to the current player variable via the callback passed as parameter.
 	 *
 	 * @params callback:(player:<P extends APlayer>) => void = The callback to execute for every player.
-	 * @params (optional) filter:(player:<P extends APlayer) => boolean
-	 * @returns A number representing the number of instances that has been affected by your callback.
+	 * @returns A new instance of a PlayerList<P extends APlayer> object.
 	 */
-	protected readonly applyToAllPlayers = (callback:(player:P) => void, filter?:(player:P) => boolean):number =>
+	protected readonly apply = (callback:(player:P) => void):PlayerList<P> =>
 	{
-		let output = 0;
-		
-		this.players.forEach((p:P) => {
-			if (!filter || filter(p)) {
-				callback(p);
-				output++;
-			}
-		});
-		return (output);
+		return (new PlayerList(this.players).apply(callback));
+	}
+
+	/**
+	 * Remove each player's instance of the list that does not match the condition in your callback.
+	 *
+	 * @params callback:(player:<P extends APlayer>) => void = The callback to filter players.
+	 * @returns The PlayerList<P extends APlayer>'s current instance.
+	 */
+	protected readonly filter = (callback:(player:P) => boolean):PlayerList<P> =>
+	{
+		return (new PlayerList(this.players).filter(callback));
 	}
 
 	/**
@@ -66,16 +68,32 @@ export abstract class ARealtimeGame<P extends APlayer>
 	 */
 	protected readonly registerReceiveEvent = <T extends IReceivedPacket>(event:SocketEvent, callback:ReceiveCallback<T, P>) =>
 	{
-		this.registeredEvents.set(event, callback);
+		this.registeredEvents.set(event, <ReceiveCallback<IReceivedPacket, P>>callback);
 		if (this.hasStarted) {
-			this.applyToAllPlayers((player:P) => {
-				player.on(event, (data:T) => {
-					callback(data, player);
-				});
-			});
+			this.on(event, callback);
 		}
 	}
 
+	protected readonly on = <T extends IReceivedPacket>(event:SocketEvent, callback:ReceiveCallback<T, P>) =>
+	{
+		this.events.set(event, <ReceiveCallback<IReceivedPacket, P>>callback);
+		this.apply((player:P) => {
+			player.on(event, (data:T) => {
+				callback(data, player);
+			});
+		});
+	}
+
+	/**
+	 * Force a game to start even if it is not fulfilled.
+	 */
+	protected readonly forceStart = () =>
+	{
+		this.roomCapacity = this.players.size;
+		this.hasStarted = true;
+		this.prerun();
+	}
+	
 	protected readonly stop = () =>
 	{
 		this._hasEnded = true;
@@ -122,7 +140,7 @@ export abstract class ARealtimeGame<P extends APlayer>
 	 */
 	public readonly broadcast = <T extends ISendPacket>(event:SocketEvent, data:T) =>
 	{
-		this.applyToAllPlayers((player:P) => {
+		this.apply((player:P) => {
 			player.send(event, data);
 		});
 	}
@@ -137,13 +155,17 @@ export abstract class ARealtimeGame<P extends APlayer>
 	 */
 	public readonly addPlayer = (player:P):boolean =>
 	{
-		if (this.players.size >= this.ROOM_CAPACITY)
+		if (this.players.size >= this.roomCapacity)
 			return (false);
 		this.players.set(player.ID, player);
+		this.events.forEach((callback:ReceiveCallback<IReceivedPacket, P>, key:SocketEvent) => {
+			player.on(key, (data:IReceivedPacket) => {
+				callback(data, player);
+			});
+		});
 		this.onPlayerJoin(player);
-		if (!this.hasStarted && this.players.size == this.ROOM_CAPACITY) {
-			this.hasStarted = true;
-			this.prerun();
+		if (!this.hasStarted && this.players.size == this.roomCapacity) {
+			this.forceStart();
 		}
 		return (true);
 	}
@@ -168,7 +190,7 @@ export abstract class ARealtimeGame<P extends APlayer>
 
 	get isFilled()
 	{
-		return (this.players.size == this.ROOM_CAPACITY);
+		return (this.players.size == this.roomCapacity);
 	}
 
 	get hadEnded()

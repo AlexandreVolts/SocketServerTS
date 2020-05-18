@@ -1,6 +1,6 @@
-.vscode
-.idea
+yarn-error.log
 build/
+dist/
 node_modules/
 webapp/build/
-src/lib/index.ts
+front_end_test/
